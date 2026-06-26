@@ -1,6 +1,6 @@
 # Prompt Lineage Library
 
-Local-first prompt library for browsing, searching, copying, curating, and editing prompt lineage data.
+Local-first prompt library for browsing, searching, copying, curating, filtering, and editing prompt lineage data.
 
 ## Use
 

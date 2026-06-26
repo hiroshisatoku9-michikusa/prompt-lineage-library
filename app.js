@@ -17,6 +17,7 @@ const state = {
   activeTab: "detail",
   search: "",
   status: "all",
+  confidence: "all",
   root: "all",
   archive: "active",
   sort: "id",
@@ -27,6 +28,7 @@ const el = {
   saveState: document.querySelector("#saveState"),
   searchInput: document.querySelector("#searchInput"),
   statusFilter: document.querySelector("#statusFilter"),
+  confidenceFilter: document.querySelector("#confidenceFilter"),
   rootFilter: document.querySelector("#rootFilter"),
   archiveFilter: document.querySelector("#archiveFilter"),
   sortSelect: document.querySelector("#sortSelect"),
@@ -69,6 +71,10 @@ function wireEvents() {
   });
   el.statusFilter.addEventListener("change", () => {
     state.status = el.statusFilter.value;
+    renderAll();
+  });
+  el.confidenceFilter.addEventListener("change", () => {
+    state.confidence = el.confidenceFilter.value;
     renderAll();
   });
   el.rootFilter.addEventListener("change", () => {
@@ -240,6 +246,10 @@ function renderFilters() {
   el.statusFilter.innerHTML = statuses
     .map((status) => optionHtml(status, status === state.status))
     .join("");
+  const confidences = ["all", ...unique(["high", "medium", "low", ...state.data.relationships.map((rel) => rel.confidence)])];
+  el.confidenceFilter.innerHTML = confidences
+    .map((confidence) => optionHtml(confidence, confidence === state.confidence))
+    .join("");
   const roots = [
     { id: "all", name: "all roots" },
     ...state.data.roots.map((root) => ({ id: root.id, name: `${root.id} · ${root.name}` })),
@@ -261,6 +271,7 @@ function renderList(prompts) {
   el.promptList.innerHTML = prompts
     .map((prompt) => {
       const parent = getParentLabel(prompt.id);
+      const rel = getPrimaryRelationship(prompt.id);
       const status = prompt.curationStatus || "review";
       return `
         <button class="prompt-row ${prompt.id === state.selectedId ? "active" : ""}" data-prompt-id="${escapeAttr(prompt.id)}" type="button">
@@ -270,6 +281,7 @@ function renderList(prompts) {
           </span>
           <span class="row-meta">
             <span class="chip ${statusClass(status)}">${escapeHtml(status)}</span>
+            ${rel?.confidence ? `<span class="chip">${escapeHtml(rel.confidence)}</span>` : ""}
             ${isMaster(prompt) ? `<span class="chip master">master</span>` : ""}
             <span>${escapeHtml(prompt.category || "uncategorized")}</span>
             <span>${escapeHtml(parent)}</span>
@@ -436,7 +448,9 @@ function filteredPrompts() {
   const query = normalizeText(state.search);
   const terms = query.split(/\s+/).filter(Boolean);
   let prompts = state.data.prompts.filter((prompt) => {
+    const rel = getPrimaryRelationship(prompt.id);
     if (state.status !== "all" && prompt.curationStatus !== state.status) return false;
+    if (state.confidence !== "all" && rel?.confidence !== state.confidence) return false;
     if (state.root !== "all" && prompt.lineageRoot !== state.root) return false;
     if (state.archive === "active" && isArchived(prompt)) return false;
     if (state.archive === "archived" && !isArchived(prompt)) return false;
@@ -469,6 +483,7 @@ function searchText(prompt) {
     prompt.lineageRoot,
     rel?.from,
     rel?.type,
+    rel?.confidence,
     rel?.note,
   ].join(" ");
 }

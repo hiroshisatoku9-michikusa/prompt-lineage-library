@@ -1,4 +1,4 @@
-const STORAGE_KEY = "prompt-lineage-library:v1";
+const STORAGE_KEY = "prompt-lineage-library:v2";
 const SEED_PATH = "./prompt_lineage_seed.json";
 const DEFAULT_STATUSES = [
   "keep_master",
@@ -279,12 +279,12 @@ function renderList(prompts) {
             <span class="prompt-id">${escapeHtml(prompt.id)}</span>
             <span class="prompt-title">${escapeHtml(prompt.title || "(untitled)")}</span>
           </span>
-          <span class="row-meta">
+          <span class="row-meta list-meta">
             <span class="chip ${statusClass(status)}">${escapeHtml(status)}</span>
             ${rel?.confidence ? `<span class="chip">${escapeHtml(rel.confidence)}</span>` : ""}
-            ${isMaster(prompt) ? `<span class="chip master">master</span>` : ""}
-            <span>${escapeHtml(prompt.category || "uncategorized")}</span>
-            <span>${escapeHtml(parent)}</span>
+            ${isMaster(prompt) ? `<span class="chip master">master</span>` : `<span class="chip chip-placeholder">master</span>`}
+            <span class="meta-category">${escapeHtml(prompt.category || "uncategorized")}</span>
+            <span class="meta-parent">${escapeHtml(parent)}</span>
           </span>
         </button>
       `;
@@ -674,10 +674,12 @@ function renderTree(id, seen) {
       const nested = renderTree(child.id, new Set(seen));
       return `
         <li>
-          <button type="button" data-tree-id="${escapeAttr(child.id)}" class="${child.id === state.selectedId ? "selected-node" : ""}">
-            ${escapeHtml(child.id)} · ${escapeHtml(trim(child.title || "(untitled)", 96))}
-          </button>
-          <span class="chip ${statusClass(status)}">${escapeHtml(status)}</span>
+          <div class="tree-node-row">
+            <button type="button" data-tree-id="${escapeAttr(child.id)}" class="${child.id === state.selectedId ? "selected-node" : ""}">
+              ${escapeHtml(child.id)} · ${escapeHtml(trim(child.title || "(untitled)", 72))}
+            </button>
+            <span class="chip ${statusClass(status)}">${escapeHtml(status)}</span>
+          </div>
           ${nested.includes("No children") ? "" : nested}
         </li>
       `;

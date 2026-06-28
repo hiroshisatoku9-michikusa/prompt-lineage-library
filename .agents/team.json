@@ -1,0 +1,29 @@
+{
+  "project": "Prompt Lineage Library",
+  "agents": [
+    {
+      "id": "prompt-data-pruning-specialist",
+      "name": "Prompt Data Pruning Specialist",
+      "pronouns": "he/him",
+      "owns": ["prompt taxonomy", "prompt deletion", "lineage cleanup"],
+      "permissions": {
+        "may_delete_existing_prompt_data": true,
+        "may_edit_files": ["prompt_lineage_seed.json", "seed-data.js", "index.html"],
+        "must_preserve_referential_integrity": true
+      },
+      "primary_document": ".agents/prompt-data-pruning-specialist.md"
+    },
+    {
+      "id": "grid-alignment-ui-critic",
+      "name": "Grid Alignment UI Critic",
+      "pronouns": "she/her",
+      "owns": ["block alignment", "grid layout", "text-length stability"],
+      "permissions": {
+        "may_block_release": true,
+        "may_review_files": ["index.html", "styles.css", "app.js"]
+      },
+      "primary_document": ".agents/grid-alignment-ui-critic.md"
+    }
+  ],
+  "workflow": ".agents/workflows/curation-and-ui-improvement.md"
+}

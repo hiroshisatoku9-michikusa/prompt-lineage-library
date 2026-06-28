@@ -1,4 +1,4 @@
-const STORAGE_KEY = "prompt-lineage-library:v2";
+const STORAGE_KEY = "prompt-lineage-library:v3";
 const SEED_PATH = "./prompt_lineage_seed.json";
 const DEFAULT_STATUSES = [
   "keep_master",
@@ -8,6 +8,27 @@ const DEFAULT_STATUSES = [
   "archive",
   "archive_legacy",
 ];
+const STATUS_LABELS = {
+  all: "すべて",
+  keep_master: "マスター",
+  keep_variant: "バリエーション",
+  review: "要確認",
+  review_or_archive: "要確認/保管候補",
+  archive: "保管済み",
+  archive_legacy: "旧データ保管",
+};
+const CONFIDENCE_LABELS = {
+  all: "すべて",
+  high: "高",
+  medium: "中",
+  low: "低",
+};
+const RELATION_TYPE_LABELS = {
+  layer_1_master: "第一層マスター",
+  layer_2_style_variation: "第二層バリエーション",
+  manual_parent: "手動接続",
+  legacy_seed: "初期接続",
+};
 
 let memoryStore = "";
 
@@ -146,7 +167,7 @@ function showStartupError(error) {
     <div class="empty-state">
       <h2>読み込みに失敗しました</h2>
       <p>${message}</p>
-      <button type="button" data-action="import-from-error">Import JSON</button>
+      <button type="button" data-action="import-from-error">JSONを読み込む</button>
     </div>
   `;
 }
@@ -244,15 +265,15 @@ function renderAll() {
 function renderFilters() {
   const statuses = ["all", ...unique([...DEFAULT_STATUSES, ...state.data.prompts.map((p) => p.curationStatus)])];
   el.statusFilter.innerHTML = statuses
-    .map((status) => optionHtml(status, status === state.status))
+    .map((status) => optionHtml(status, status === state.status, statusLabel(status)))
     .join("");
   const confidences = ["all", ...unique(["high", "medium", "low", ...state.data.relationships.map((rel) => rel.confidence)])];
   el.confidenceFilter.innerHTML = confidences
-    .map((confidence) => optionHtml(confidence, confidence === state.confidence))
+    .map((confidence) => optionHtml(confidence, confidence === state.confidence, confidenceLabel(confidence)))
     .join("");
   const roots = [
-    { id: "all", name: "all roots" },
-    ...state.data.roots.map((root) => ({ id: root.id, name: `${root.id} · ${root.name}` })),
+    { id: "all", name: "すべての系統" },
+    ...state.data.roots.map((root) => ({ id: root.id, name: root.name })),
   ];
   el.rootFilter.innerHTML = roots
     .map((root) => optionHtml(root.id, root.id === state.root, root.name))
@@ -263,7 +284,7 @@ function renderFilters() {
 }
 
 function renderList(prompts) {
-  el.resultCount.textContent = `${prompts.length} prompts`;
+  el.resultCount.textContent = `${prompts.length}枚のカード`;
   if (!prompts.length) {
     el.promptList.innerHTML = `<div class="empty-state"><p>該当するプロンプトはありません。</p></div>`;
     return;
@@ -277,13 +298,13 @@ function renderList(prompts) {
         <button class="prompt-row ${prompt.id === state.selectedId ? "active" : ""}" data-prompt-id="${escapeAttr(prompt.id)}" type="button">
           <span class="row-main">
             <span class="prompt-id">${escapeHtml(prompt.id)}</span>
-            <span class="prompt-title">${escapeHtml(prompt.title || "(untitled)")}</span>
+            <span class="prompt-title">${escapeHtml(prompt.title || "無題")}</span>
           </span>
           <span class="row-meta list-meta">
-            <span class="chip ${statusClass(status)}">${escapeHtml(status)}</span>
-            ${rel?.confidence ? `<span class="chip">${escapeHtml(rel.confidence)}</span>` : ""}
-            ${isMaster(prompt) ? `<span class="chip master">master</span>` : `<span class="chip chip-placeholder">master</span>`}
-            <span class="meta-category">${escapeHtml(prompt.category || "uncategorized")}</span>
+            <span class="chip ${statusClass(status)}">${escapeHtml(statusLabel(status))}</span>
+            ${rel?.confidence ? `<span class="chip">${escapeHtml(confidenceLabel(rel.confidence))}</span>` : ""}
+            ${isMaster(prompt) ? `<span class="chip master">第一層</span>` : `<span class="chip">第二層</span>`}
+            <span class="meta-category">${escapeHtml(prompt.category || "未分類")}</span>
             <span class="meta-parent">${escapeHtml(parent)}</span>
           </span>
         </button>
@@ -307,15 +328,15 @@ function renderDetail() {
           <div>
             <div class="row-meta">
               <span class="chip">${escapeHtml(prompt.id)}</span>
-              <span class="chip ${statusClass(prompt.curationStatus)}">${escapeHtml(prompt.curationStatus)}</span>
-              ${isMaster(prompt) ? `<span class="chip master">master</span>` : ""}
+              <span class="chip ${statusClass(prompt.curationStatus)}">${escapeHtml(statusLabel(prompt.curationStatus))}</span>
+              ${isMaster(prompt) ? `<span class="chip master">第一層</span>` : `<span class="chip">第二層</span>`}
             </div>
-            <h2>${escapeHtml(prompt.title || "(untitled)")}</h2>
+            <h2>${escapeHtml(prompt.title || "無題")}</h2>
           </div>
           <div class="detail-actions">
-            <button class="primary" type="button" data-action="copy-body">Copy</button>
-            <button type="button" data-action="copy-json">Copy JSON</button>
-            <button class="danger" type="button" data-action="archive">Archive</button>
+            <button class="primary" type="button" data-action="copy-body">コピー</button>
+            <button type="button" data-action="copy-json">JSONコピー</button>
+            <button class="danger" type="button" data-action="archive">保管へ</button>
           </div>
         </div>
         <pre class="body-text">${escapeHtml(prompt.body)}</pre>
@@ -323,57 +344,59 @@ function renderDetail() {
 
       <aside class="surface pad field-stack">
         <label>
-          <span>Title</span>
+          <span>タイトル</span>
           <textarea data-field="title">${escapeHtml(prompt.title)}</textarea>
         </label>
         <div class="two-col">
           <label>
-            <span>Status</span>
+            <span>整理状態</span>
             <select data-field="curationStatus">
-              ${statusOptions.map((status) => optionHtml(status, status === prompt.curationStatus)).join("")}
+              ${statusOptions.map((status) => optionHtml(status, status === prompt.curationStatus, statusLabel(status))).join("")}
             </select>
           </label>
           <label>
-            <span>Date</span>
+            <span>日付</span>
             <input data-field="date" value="${escapeAttr(prompt.date)}" />
           </label>
         </div>
         <label>
-          <span>Parent</span>
+          <span>親カード</span>
           <select data-parent-select>
             ${parentOptions(prompt.id, rel)}
           </select>
         </label>
         <div class="two-col">
           <label>
-            <span>Relation type</span>
-            <input data-rel-field="type" value="${escapeAttr(rel?.type || "manual_parent")}" />
+            <span>関係タイプ</span>
+            <select data-rel-field="type">
+              ${relationTypeOptions(rel?.type || "manual_parent")}
+            </select>
           </label>
           <label>
-            <span>Confidence</span>
+            <span>確度</span>
             <select data-rel-field="confidence">
-              ${["high", "medium", "low"].map((value) => optionHtml(value, value === (rel?.confidence || "medium"))).join("")}
+              ${["high", "medium", "low"].map((value) => optionHtml(value, value === (rel?.confidence || "medium"), confidenceLabel(value))).join("")}
             </select>
           </label>
         </div>
         <label>
-          <span>Relation note</span>
+          <span>関係メモ</span>
           <textarea data-rel-field="note">${escapeHtml(rel?.note || "")}</textarea>
         </label>
         <label>
-          <span>Category</span>
+          <span>カテゴリ</span>
           <input data-field="category" value="${escapeAttr(prompt.category)}" />
         </label>
         <label>
-          <span>Subject</span>
+          <span>題材</span>
           <input data-field="subject" value="${escapeAttr(prompt.subject)}" />
         </label>
         <label>
-          <span>Tags</span>
+          <span>タグ</span>
           <input data-field="tags" value="${escapeAttr((prompt.tags || []).join(", "))}" />
         </label>
         <label>
-          <span>Notes</span>
+          <span>メモ</span>
           <textarea data-field="notes">${escapeHtml(prompt.notes)}</textarea>
         </label>
       </aside>
@@ -387,19 +410,19 @@ function renderLineage() {
     state.lineageRoot ||
     selected?.lineageRoot ||
     (state.root !== "all" ? state.root : state.data.roots[0]?.id);
-  const roots = state.data.roots.map((root) => optionHtml(root.id, root.id === selectedRoot, `${root.id} · ${root.name}`)).join("");
+  const roots = state.data.roots.map((root) => optionHtml(root.id, root.id === selectedRoot, root.name)).join("");
   const root = state.data.roots.find((item) => item.id === selectedRoot) || state.data.roots[0];
   el.lineageTab.innerHTML = `
     <div class="lineage-layout">
       <div class="surface pad lineage-tools">
         <label>
-          <span>Root</span>
+          <span>系統</span>
           <select id="lineageRootSelect">${roots}</select>
         </label>
-        <button type="button" data-lineage-action="select-root">${root ? "Select root" : "No root"}</button>
+        <button type="button" data-lineage-action="select-root">${root ? "系統を表示" : "系統なし"}</button>
       </div>
       <div class="surface pad">
-        <h2>${escapeHtml(root?.name || "Lineage")}</h2>
+        <h2>${escapeHtml(root?.name || "系譜")}</h2>
         <p class="muted">${escapeHtml(root?.description || "")}</p>
         <div class="tree">${root ? renderTree(root.id, new Set()) : ""}</div>
       </div>
@@ -413,18 +436,18 @@ function renderExport() {
   el.exportTab.innerHTML = `
     <div class="export-layout">
       <div class="stats-grid">
-        <div class="stat"><b>${state.data.prompts.length}</b><span>prompts</span></div>
-        <div class="stat"><b>${state.data.roots.length}</b><span>roots</span></div>
-        <div class="stat"><b>${state.data.relationships.length}</b><span>relationships</span></div>
-        <div class="stat"><b>${archived}</b><span>archived · ${masters} masters</span></div>
+        <div class="stat"><b>${state.data.prompts.length}</b><span>カード</span></div>
+        <div class="stat"><b>${state.data.roots.length}</b><span>系統</span></div>
+        <div class="stat"><b>${state.data.relationships.length}</b><span>接続</span></div>
+        <div class="stat"><b>${archived}</b><span>保管済み · マスター ${masters}</span></div>
       </div>
       <div class="surface pad">
         <div class="export-actions">
-          <button class="primary" type="button" data-export="json">Export JSON</button>
-          <button type="button" data-export="prompts-csv">Export prompts CSV</button>
-          <button type="button" data-export="relationships-csv">Export relationships CSV</button>
-          <button type="button" data-export="import">Import JSON</button>
-          <button class="danger" type="button" data-export="reset">Reset to seed</button>
+          <button class="primary" type="button" data-export="json">JSONを書き出す</button>
+          <button type="button" data-export="prompts-csv">カードCSV</button>
+          <button type="button" data-export="relationships-csv">系譜CSV</button>
+          <button type="button" data-export="import">JSONを読み込む</button>
+          <button class="danger" type="button" data-export="reset">seedに戻す</button>
         </div>
       </div>
     </div>
@@ -588,7 +611,7 @@ function ensureRelationship(id) {
       to: id,
       type: "manual_parent",
       confidence: "high",
-      note: "Edited in Prompt Lineage Library.",
+      note: "スタイルプロンプト図鑑で手動編集。",
     };
     state.data.relationships.push(rel);
   }
@@ -634,17 +657,17 @@ function parentOptions(id, rel) {
   const current = rel?.from || getPrompt(id)?.lineageRoot || "";
   const descendants = getDescendants(id);
   const rootOptions = state.data.roots
-    .map((root) => optionHtml(`root:${root.id}`, current === root.id, `${root.id} · ${root.name}`))
+    .map((root) => optionHtml(`root:${root.id}`, current === root.id, root.name))
     .join("");
   const promptOptions = state.data.prompts
     .filter((prompt) => prompt.id !== id)
     .map((prompt) => {
       const disabled = descendants.has(prompt.id);
-      const label = `${prompt.id} · ${trim(prompt.title || "(untitled)", 84)}`;
+      const label = `${prompt.id} · ${trim(prompt.title || "無題", 84)}`;
       return optionHtml(`prompt:${prompt.id}`, current === prompt.id, label, disabled);
     })
     .join("");
-  return `<optgroup label="Roots">${rootOptions}</optgroup><optgroup label="Prompts">${promptOptions}</optgroup>`;
+  return `<optgroup label="系統">${rootOptions}</optgroup><optgroup label="カード">${promptOptions}</optgroup>`;
 }
 
 function getDescendants(id, seen = new Set()) {
@@ -660,14 +683,14 @@ function getDescendants(id, seen = new Set()) {
 }
 
 function renderTree(id, seen) {
-  if (seen.has(id)) return `<p class="muted">Cycle detected at ${escapeHtml(id)}</p>`;
+  if (seen.has(id)) return `<p class="muted">循環を検出: ${escapeHtml(id)}</p>`;
   seen.add(id);
   const children = state.data.relationships
     .filter((rel) => rel.from === id)
     .map((rel) => getPrompt(rel.to))
     .filter(Boolean)
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  if (!children.length) return `<p class="muted">No children</p>`;
+  if (!children.length) return `<p class="muted">子カードなし</p>`;
   return `<ul>${children
     .map((child) => {
       const status = child.curationStatus || "review";
@@ -676,11 +699,11 @@ function renderTree(id, seen) {
         <li>
           <div class="tree-node-row">
             <button type="button" data-tree-id="${escapeAttr(child.id)}" class="${child.id === state.selectedId ? "selected-node" : ""}">
-              ${escapeHtml(child.id)} · ${escapeHtml(trim(child.title || "(untitled)", 72))}
+              ${escapeHtml(child.id)} · ${escapeHtml(trim(child.title || "無題", 72))}
             </button>
-            <span class="chip ${statusClass(status)}">${escapeHtml(status)}</span>
+            <span class="chip ${statusClass(status)}">${escapeHtml(statusLabel(status))}</span>
           </div>
-          ${nested.includes("No children") ? "" : nested}
+          ${nested.includes("子カードなし") ? "" : nested}
         </li>
       `;
     })
@@ -689,10 +712,28 @@ function renderTree(id, seen) {
 
 function getParentLabel(id) {
   const rel = getPrimaryRelationship(id);
-  if (!rel) return "no parent";
+  if (!rel) return "親なし";
   const root = state.data.roots.find((item) => item.id === rel.from);
   if (root) return root.name;
   return rel.from;
+}
+
+function statusLabel(status) {
+  return STATUS_LABELS[status] || status || "要確認";
+}
+
+function confidenceLabel(confidence) {
+  return CONFIDENCE_LABELS[confidence] || confidence || "中";
+}
+
+function relationTypeLabel(type) {
+  return RELATION_TYPE_LABELS[type] || type || "手動接続";
+}
+
+function relationTypeOptions(current) {
+  return unique([...Object.keys(RELATION_TYPE_LABELS), current])
+    .map((type) => optionHtml(type, type === current, relationTypeLabel(type)))
+    .join("");
 }
 
 function isMaster(prompt) {
